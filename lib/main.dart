@@ -1,224 +1,208 @@
-import 'package:english_words/english_words.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:provider/provider.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 void main() {
-  runApp(MyApp());
+  runApp(const BabyCareApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class BabyCareApp extends StatelessWidget {
+  const BabyCareApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => MyAppState(),
-      child: MaterialApp(
-        title: 'Namer App',
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-              seedColor: Color.fromARGB(255, 136, 202, 240)),
-        ),
-        home: MyHomePage(),
+    return MaterialApp(
+      title: '宝宝生活记录',
+      theme: ThemeData(
+        primarySwatch: Colors.pink,
+        useMaterial3: true,
       ),
+      home: const MainPage(),
     );
   }
 }
 
-class MyAppState extends ChangeNotifier {
-  var current = WordPair.random();
-  // ↓ Add this.
-  void getNext() {
-    current = WordPair.random();
-    notifyListeners();
-  }
-
-  // ↓ Add the code below.
-  var favorites = <WordPair>[];
-
-  void toggleFavorite() {
-    if (favorites.contains(current)) {
-      favorites.remove(current);
-    } else {
-      favorites.add(current);
-    }
-    notifyListeners();
-  }
-}
-
-// ...
-
-class MyHomePage extends StatefulWidget {
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  var selectedIndex = 0; // ← Add this property.
+class MainPage extends StatefulWidget {
+  const MainPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    Widget page;
-    switch (selectedIndex) {
-      case 0:
-        page = GeneratorPage();
-        break;
-      case 1:
-        page = FavoritePage();
-        break;
-      default:
-        throw UnimplementedError('no widget for $selectedIndex');
-    }
-    return LayoutBuilder(builder: (context, constraints) {
-      return Scaffold(
-        body: Row(
-          children: [
-            SafeArea(
-              child: NavigationRail(
-                extended: constraints.maxWidth >= 600,
-                destinations: [
-                  NavigationRailDestination(
-                    icon: Icon(Icons.home),
-                    label: Text('Home'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.favorite),
-                    label: Text('Favorites'),
-                  ),
-                ],
-                selectedIndex: selectedIndex,
-                onDestinationSelected: (value) {
-                  print('selected: $value');
-                  // ↓ Replace print with this.
-                  setState(() {
-                    selectedIndex = value;
-                  });
-                },
-              ),
-            ),
-            Expanded(
-              child: Container(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: page,
-              ),
-            ),
-          ],
-        ),
-      );
+  State<MainPage> createState() => _MainPageState();
+}
+
+class _MainPageState extends State<MainPage> {
+  int _selectedIndex = 0;
+
+  final List<Widget> _pages = const [
+    RecordPage(),
+    StatisticsPage(),
+    ProfilePage(),
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
     });
   }
-}
 
-class GeneratorPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    var appState = context.watch<MyAppState>();
-    var pair = appState.current;
-
-    IconData icon;
-    if (appState.favorites.contains(pair)) {
-      icon = Icons.favorite;
-    } else {
-      icon = Icons.favorite_border;
-    }
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          BigCard(pair: pair),
-          SizedBox(height: 10),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () {
-                  appState.toggleFavorite();
-                },
-                icon: Icon(icon),
-                label: Text('Like'),
-              ),
-              SizedBox(width: 10),
-              ElevatedButton(
-                onPressed: () {
-                  appState.getNext();
-                },
-                child: Text('Next'),
-              ),
-            ],
-          ),
+    return Scaffold(
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.event_note), label: "记录"),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: "统计"),
+          BottomNavigationBarItem(icon: Icon(Icons.child_care), label: "宝宝"),
         ],
       ),
     );
   }
 }
 
-class FavoritePage extends StatelessWidget {
+// ------------------ 记录页 -------------------
+class RecordPage extends StatefulWidget {
+  const RecordPage({super.key});
+
+  @override
+  State<RecordPage> createState() => _RecordPageState();
+}
+
+class _RecordPageState extends State<RecordPage> {
+  final List<Map<String, dynamic>> _records = [];
+
+  void _addMilkRecord() {
+    String milkType = '母乳';
+    DateTime milkTime = DateTime.now();
+    final TextEditingController amountController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("喝奶记录"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: milkType,
+              decoration: const InputDecoration(labelText: '奶类型'),
+              items: ['母乳', '配方奶']
+                  .map((type) => DropdownMenuItem(
+                value: type,
+                child: Text(type),
+              ))
+                  .toList(),
+              onChanged: (value) {
+                milkType = value!;
+              },
+            ),
+            TextField(
+              controller: amountController,
+              decoration: const InputDecoration(labelText: '奶量 (ml)'),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("取消")),
+          ElevatedButton(
+            onPressed: () {
+              setState(() {
+                _records.add({
+                  'type': milkType,
+                  'time': milkTime,
+                  'amount': int.tryParse(amountController.text) ?? 0,
+                });
+              });
+              Navigator.pop(context);
+            },
+            child: const Text("保存"),
+          )
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    var appState = context.watch<MyAppState>();
-
-    if (appState.favorites.isEmpty) {
-      return Center(
-        child: Text('No favorites yet.'),
-      );
-    }
-    
-    var favorites = appState.favorites;
-    // return Center(
-    //   child: Column(
-    //     mainAxisAlignment: MainAxisAlignment.center,
-    //     children: [
-    //       Text('Messages:'),
-    //       for (var favorite in favorites) Text(favorite.asLowerCase),
-    //       // favorites.map((e) => Text(e.asLowerCase)).toList(),
-    //     ],
-    //   ),
-    // );
-    return ListView(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(20),
-          child: Text('You have '
-              '${appState.favorites.length} favorites:'),
-        ),
-        for (var pair in appState.favorites)
-          ListTile(
-            leading: Icon(Icons.favorite),
-            title: Text(pair.asLowerCase),
+    return Scaffold(
+      appBar: AppBar(title: const Text("宝宝生活记录")),
+      body: Column(
+        children: [
+          // 功能按钮区
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                _buildActionButton(Icons.local_drink, "喝奶", _addMilkRecord),
+                _buildActionButton(Icons.bedtime, "睡觉", () {}),
+                _buildActionButton(Icons.baby_changing_station, "换尿布", () {}),
+                _buildActionButton(Icons.monitor_weight, "身高体重", () {}),
+              ],
+            ),
           ),
-      ],
+          const Divider(),
+          // 最近记录列表
+          Expanded(
+            child: ListView.builder(
+              itemCount: _records.length,
+              itemBuilder: (context, index) {
+                final record = _records[index];
+                return ListTile(
+                  leading: const Icon(Icons.local_drink),
+                  title: Text("${record['type']} - ${record['amount']}ml"),
+                  subtitle: Text(
+                    "时间: ${record['time'].hour}:${record['time'].minute.toString().padLeft(2, '0')}",
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton(IconData icon, String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 30,
+            child: Icon(icon, size: 28),
+          ),
+          const SizedBox(height: 4),
+          Text(label),
+        ],
+      ),
     );
   }
 }
 
-// ...
-
-class BigCard extends StatelessWidget {
-  const BigCard({
-    super.key,
-    required this.pair,
-  });
-
-  final WordPair pair;
+// ------------------ 统计页 -------------------
+class StatisticsPage extends StatelessWidget {
+  const StatisticsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    final style = theme.textTheme.displayMedium!.copyWith(
-      color: theme.colorScheme.onPrimary,
+    return const Scaffold(
+      body: Center(child: Text("统计页面 (开发中)")),
     );
+  }
+}
 
-    return Card(
-      color: theme.colorScheme.primary,
-      child: Text(
-        pair.asLowerCase,
-        style: style,
-        semanticsLabel: "${pair.first} ${pair.second}",
-      ),
+// ------------------ 宝宝信息页 -------------------
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: Text("宝宝信息页面 (开发中)")),
     );
   }
 }
