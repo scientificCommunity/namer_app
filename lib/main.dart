@@ -72,8 +72,8 @@ class RecordPage extends StatefulWidget {
 class _RecordPageState extends State<RecordPage> {
   final List<Map<String, dynamic>> _records = [];
 
-  void _addMilkRecord() {
-    String milkType = '母乳';
+  Future<void> _addMilkRecord() async {
+    int? selectedFeedType; // 绑定值 (1=母乳, 2=配方奶)
     DateTime milkTime = DateTime.now();
     final TextEditingController amountController = TextEditingController();
 
@@ -84,17 +84,17 @@ class _RecordPageState extends State<RecordPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<String>(
-              value: milkType,
+            DropdownButtonFormField<int>(
+              value: selectedFeedType,
               decoration: const InputDecoration(labelText: '奶类型'),
-              items: ['母乳', '配方奶']
-                  .map((type) => DropdownMenuItem(
-                value: type,
-                child: Text(type),
-              ))
-                  .toList(),
+              items: FeedType.values.map((ft) {
+                return DropdownMenuItem(
+                  value: ft.value,
+                  child: Text(ft.label),
+                );
+              }).toList(),
               onChanged: (value) {
-                milkType = value!;
+                selectedFeedType = value!;
               },
             ),
             TextField(
@@ -105,17 +105,40 @@ class _RecordPageState extends State<RecordPage> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("取消")),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text("取消")),
           ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _records.add({
-                  'type': milkType,
-                  'time': milkTime,
-                  'amount': int.tryParse(amountController.text) ?? 0,
-                });
-              });
-              Navigator.pop(context);
+            onPressed: () async {
+              final record = {
+                'type': selectedFeedType,
+                'time': milkTime.toUtc().toIso8601String(),
+                'amount': int.tryParse(amountController.text) ?? 0,
+              };
+
+              try {
+                print("开始调用后端接口。。。。。。。");
+                // === 调用后端 API ===
+                final response = await http.post(
+                  Uri.parse('http://192.168.0.105:8080/api/record/milk/create'),
+                  headers: {'Content-Type': 'application/json'},
+                  body: jsonEncode(record),
+                );
+
+                if (response.statusCode == 200) {
+                  setState(() {
+                    _records.add(record); // 本地列表展示
+                  });
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('上传失败: ${response.body}')),
+                  );
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('网络错误: $e')),
+                );
+              }
             },
             child: const Text("保存"),
           )
@@ -204,5 +227,32 @@ class ProfilePage extends StatelessWidget {
     return const Scaffold(
       body: Center(child: Text("宝宝信息页面 (开发中)")),
     );
+  }
+}
+
+
+// ------------------ 喂养方式 -------------------
+enum FeedType {
+  breastMilk,   // 母乳
+  formulaMilk,  // 配方奶
+}
+
+extension FeedTypeExt on FeedType {
+  int get value {
+    switch (this) {
+      case FeedType.breastMilk:
+        return 1;
+      case FeedType.formulaMilk:
+        return 2;
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case FeedType.breastMilk:
+        return "母乳";
+      case FeedType.formulaMilk:
+        return "配方奶";
+    }
   }
 }
